@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>DaylightSMP Partnerships</title>
+<style>
+:root{--bg:#0d0d10;--card:#16161a;--line:#26262e;--text:#e8e8ee;--mut:#6b6b80;--red:#ff3b3b;color-scheme:dark;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font-family:"JetBrains Mono",ui-monospace,Menlo,Consolas,monospace;padding:20px 12px 60px}
+.wrap{max-width:780px;margin:0 auto}
+h1{font-size:20px;margin:0 0 4px}h1 span{color:var(--red)}
+.sub{color:var(--mut);font-size:13px;margin-bottom:16px}
+.bar{height:6px;background:var(--card);border-radius:9px;overflow:hidden;margin-bottom:18px}
+.bar i{display:block;height:100%;background:var(--red);width:0;transition:width .3s}
+.row{display:flex;align-items:center;gap:14px;min-height:56px;padding:10px 16px;margin-bottom:8px;background:var(--card);border:1px solid var(--line);border-radius:12px}
+.num{width:44px;font-size:12px;color:var(--mut);flex:none}
+.plus{width:34px;height:34px;flex:none;border:0;border-radius:9px;background:var(--red);color:#fff;font-size:22px;font-weight:700;cursor:pointer;box-shadow:0 0 14px rgba(255,59,59,.45)}
+.empty{cursor:pointer}.empty:hover{border-color:#3a3a46}
+.ph{font-style:italic;color:var(--mut);font-size:14px}
+.info{flex:1;min-width:0}
+.name{font-weight:700;font-size:15px}
+.meta{font-size:12px;color:var(--mut);margin-top:3px;line-height:1.6}
+.tag{display:inline-block;padding:1px 7px;border-radius:6px;background:#23232b;color:#ff8a8a;margin-right:2px}
+.mem{color:var(--text)}
+.acts{display:flex;gap:6px}
+.sm{background:#23232b;color:var(--text);border:1px solid var(--line);border-radius:8px;padding:5px 9px;font:inherit;font-size:12px;cursor:pointer}
+.sm:hover{border-color:var(--red)}
+.modal{position:fixed;inset:0;background:rgba(0,0,0,.7);display:none;align-items:center;justify-content:center;padding:16px;z-index:5}
+.modal.on{display:flex}
+.box{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:20px;width:100%;max-width:420px}
+.box h2{margin:0 0 14px;font-size:16px}
+label{display:block;font-size:12px;color:var(--mut);margin:12px 0 5px}
+input,select{width:100%;background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:9px;padding:10px;font:inherit;font-size:14px}
+input:focus,select:focus{outline:none;border-color:var(--red)}
+.btns{display:flex;gap:8px;margin-top:18px}
+.btns button{flex:1;padding:10px;border-radius:9px;border:0;font:inherit;font-weight:700;cursor:pointer}
+.go{background:var(--red);color:#fff}.no{background:#23232b;color:var(--text)}
+.mc{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:14px}
+.mcb{background:var(--red);color:#fff;border:0;border-radius:10px;padding:10px 14px;font:inherit;font-weight:700;font-size:13px;cursor:pointer;box-shadow:0 0 14px rgba(255,59,59,.35)}
+.mcv{color:var(--text);font-size:14px}
+.mc input{width:140px}
+.mc .sm{padding:9px 12px}
+.hide{display:none!important}
+.del:hover{border-color:var(--red);color:var(--red)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1><span>■</span> DaylightSMP partnerships</h1>
+  <div class="sub"><span id="count">0</span>/100 partnerships</div>
+  <div class="bar"><i id="fill"></i></div>
+  <div id="list"></div>
+</div>
+
+<div class="modal" id="modal">
+  <div class="box">
+    <h2 id="mtitle">Add partnership</h2>
+    <label>Server name</label>
+    <input id="f-name" maxlength="60" placeholder="e.g. CoolSMP">
+    <label>What @ did the other server do?</label>
+    <select id="f-their"></select>
+    <label>What @ did you do? (daylightsmp)</label>
+    <select id="f-mine"></select>
+    <label>What's the other server's member count?</label>
+    <input id="f-mem" type="number" min="0" placeholder="e.g. 1250">
+    <label>DayLightSMP membercount now</label>
+    <input id="f-mymem" type="number" min="0" placeholder="e.g. 850">
+    <div class="btns"><button class="no" id="cancel">Cancel</button><button class="go" id="save">Save</button></div>
+  </div>
+</div>
+
+<script>
+const TOTAL=100, KEY="daylightsmp-partnerships";
+const TAGS=["@everyone","@here","@partnership","none"];
+let data=new Array(TOTAL).fill(null), cur=-1;
+
+try{const s=localStorage.getItem(KEY);if(s){const p=JSON.parse(s);if(Array.isArray(p))data=p.slice(0,TOTAL).concat(new Array(Math.max(0,TOTAL-p.length)).fill(null));}}catch(e){}
+function persist(){try{localStorage.setItem(KEY,JSON.stringify(data));}catch(e){}}
+let db=null;
+const localCopy=data.slice();
+function writeSlot(i,val){
+  data[i]=val;render();
+  if(db){
+    const ref=db.doc("slots/"+i);
+    (val?ref.set(val):ref.delete()).catch(()=>{});
+  }else persist();
+}
+
+const $=id=>document.getElementById(id);
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+for(const id of["f-their","f-mine"])$(id).innerHTML=TAGS.map(t=>`<option>${t}</option>`).join("");
+
+function render(){
+  let filled=0;
+  $("list").innerHTML=data.map((d,i)=>{
+    const n=`${i+1}/${TOTAL}`;
+    if(!d)return `<div class="row empty" data-i="${i}"><span class="num">${n}</span><button class="plus" aria-label="Add">+</button><span class="ph">click to add server…</span></div>`;
+    filled++;
+    return `<div class="row"><span class="num">${n}</span><div class="info"><div class="name">${esc(d.name)}</div>
+      <div class="meta">them: <span class="tag">${esc(d.their)}</span> · <span class="mem">${Number(d.members).toLocaleString()} members</span><br>daylightsmp: <span class="tag">${esc(d.mine)}</span> · <span class="mem">${d.mymem!=null?Number(d.mymem).toLocaleString()+" members now":"count not set"}</span></div></div>
+      <div class="acts"><button class="sm" data-edit="${i}">edit</button><button class="sm del" data-del="${i}">remove</button></div></div>`;
+  }).join("");
+  $("count").textContent=filled;
+  $("fill").style.width=filled+"%";
+}
+
+function open(i){
+  cur=i;const d=data[i];
+  $("mtitle").textContent=(d?"Edit":"Add")+" partnership #"+(i+1);
+  $("f-name").value=d?d.name:"";
+  $("f-their").value=d?d.their:TAGS[0];
+  $("f-mine").value=d?d.mine:TAGS[0];
+  $("f-mem").value=d?d.members:"";
+  $("f-mymem").value=d&&d.mymem!=null?d.mymem:"";
+  $("modal").classList.add("on");
+  setTimeout(()=>$("f-name").focus(),30);
+}
+function close(){$("modal").classList.remove("on");cur=-1;}
+
+$("list").addEventListener("click",e=>{
+  const del=e.target.closest("[data-del]"),ed=e.target.closest("[data-edit]"),em=e.target.closest(".empty");
+  if(del){writeSlot(+del.dataset.del,null);}
+  else if(ed)open(+ed.dataset.edit);
+  else if(em)open(+em.dataset.i);
+});
+$("cancel").onclick=close;
+$("modal").addEventListener("click",e=>{if(e.target.id==="modal")close();});
+$("save").onclick=()=>{
+  const name=$("f-name").value.trim();
+  if(!name){$("f-name").focus();return;}
+  data[cur]={name,their:$("f-their").value,mine:$("f-mine").value,members:Math.max(0,parseInt($("f-mem").value)||0),mymem:isNaN(parseInt($("f-mymem").value))?null:Math.max(0,parseInt($("f-mymem").value))};
+  writeSlot(cur,data[cur]);close();
+};
+document.addEventListener("keydown",e=>{if(e.key==="Escape")close();if(e.key==="Enter"&&$("modal").classList.contains("on"))$("save").click();});
+render();
+(async()=>{
+  try{
+    if(!window.claude||!claude.use)return;
+    const d=await claude.use("db");
+    if(!d)return;
+    db=d;
+    let first=true;
+    db.collection("slots").onSnapshot(snap=>{
+      if(first&&snap.empty){
+        localCopy.forEach((v,i)=>{if(v)db.doc("slots/"+i).set(v).catch(()=>{});});
+      }
+      first=false;
+      const arr=new Array(TOTAL).fill(null);
+      snap.docs.forEach(s=>{const i=parseInt(s.id,10),v=s.data();if(i>=0&&i<TOTAL&&v)arr[i]=v;});
+      if(!(snap.empty&&localCopy.some(Boolean)))data=arr;
+      render();
+    },()=>{});
+  }catch(e){}
+})();
+</script>
+</body>
+</html>

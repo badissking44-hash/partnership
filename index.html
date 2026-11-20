@@ -49,6 +49,7 @@ input:focus,select:focus{outline:none;border-color:var(--red)}
 <div class="wrap">
   <h1><span>■</span> DaylightSMP partnerships</h1>
   <div class="sub"><span id="count">0</span>/100 partnerships</div>
+  <div class="sub" id="sync">connecting…</div>
   <div class="bar"><i id="fill"></i></div>
   <div id="list"></div>
 </div>
@@ -77,14 +78,23 @@ let data=new Array(TOTAL).fill(null), cur=-1;
 
 try{const s=localStorage.getItem(KEY);if(s){const p=JSON.parse(s);if(Array.isArray(p))data=p.slice(0,TOTAL).concat(new Array(Math.max(0,TOTAL-p.length)).fill(null));}}catch(e){}
 function persist(){try{localStorage.setItem(KEY,JSON.stringify(data));}catch(e){}}
-let db=null;
-const localCopy=data.slice();
+// ====== PASTE YOUR FIREBASE REALTIME DATABASE URL HERE (no trailing slash) ======
+const DB_URL="https://partnership-140e4-default-rtdb.firebaseio.com";   // e.g. "https://your-project-default-rtdb.firebaseio.com"
+// =================================================================================
+let pending=0;
+function setSync(ok,msg){
+  const el=document.getElementById("sync");if(!el)return;
+  el.textContent=ok?"\u25cf live: changes are shared with everyone":"\u26a0 "+(msg||"not shared: changes only save on this device");
+  el.style.color=ok?"#4ade80":"#ffb454";
+}
 function writeSlot(i,val){
   data[i]=val;render();
-  if(db){
-    const ref=db.doc("slots/"+i);
-    (val?ref.set(val):ref.delete()).catch(()=>{});
-  }else persist();
+  if(!DB_URL){persist();return;}
+  pending++;
+  fetch(DB_URL+"/slots/"+i+".json",{method:val?"PUT":"DELETE",body:val?JSON.stringify(val):undefined})
+    .then(r=>{if(!r.ok)throw 0;setSync(true);})
+    .catch(()=>setSync(false,"couldn't save to the shared list"))
+    .finally(()=>{pending--;});
 }
 
 const $=id=>document.getElementById(id);
@@ -134,25 +144,20 @@ $("save").onclick=()=>{
 };
 document.addEventListener("keydown",e=>{if(e.key==="Escape")close();if(e.key==="Enter"&&$("modal").classList.contains("on"))$("save").click();});
 render();
-(async()=>{
+async function poll(){
+  if(!DB_URL||pending>0)return;
   try{
-    if(!window.claude||!claude.use)return;
-    const d=await claude.use("db");
-    if(!d)return;
-    db=d;
-    let first=true;
-    db.collection("slots").onSnapshot(snap=>{
-      if(first&&snap.empty){
-        localCopy.forEach((v,i)=>{if(v)db.doc("slots/"+i).set(v).catch(()=>{});});
-      }
-      first=false;
-      const arr=new Array(TOTAL).fill(null);
-      snap.docs.forEach(s=>{const i=parseInt(s.id,10),v=s.data();if(i>=0&&i<TOTAL&&v)arr[i]=v;});
-      if(!(snap.empty&&localCopy.some(Boolean)))data=arr;
-      render();
-    },()=>{});
-  }catch(e){}
-})();
+    const r=await fetch(DB_URL+"/slots.json");
+    if(!r.ok)throw 0;
+    const v=await r.json();
+    const arr=new Array(TOTAL).fill(null);
+    if(v){Object.keys(v).forEach(k=>{const i=parseInt(k,10);if(i>=0&&i<TOTAL&&v[k])arr[i]=v[k];});}
+    if(pending===0){data=arr;render();}
+    setSync(true);
+  }catch(e){setSync(false,"can't reach the shared database. Check DB_URL and the rules.");}
+}
+if(DB_URL){poll();setInterval(poll,3000);}
+else setSync(false,"DB_URL is empty. Changes only save on this device.");
 </script>
 </body>
 </html>
